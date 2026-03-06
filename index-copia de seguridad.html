@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Therapify</title>
+  <script type="module">
+   import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAebaqi_XhMoLTNPTrCAqTwFhIv-53DdcY",
+      authDomain: "therapify-app.firebaseapp.com",
+      projectId: "therapify-app",
+      storageBucket: "therapify-app.firebasestorage.app",
+      messagingSenderId: "259508053293",
+      appId: "1:259508053293:web:b2ef38521aa3fd0ff71fa4"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    onAuthStateChanged(auth, (user) => {
+  if (user) {
+    document.getElementById("login").style.display = "none";
+    document.getElementById("panel").style.display = "block";
+    cargarTurnos();
+  }
+});
+    const db = getFirestore(app);
+    let listaInstituciones = [];
+
+
+window.agregarInstitucion = async function () {
+  const nombre = document.getElementById("nombreInstitucion").value;
+  const porcentaje = parseInt(document.getElementById("porcentajeInstitucion").value);
+  const user = auth.currentUser;
+
+  await addDoc(collection(db, "usuarios", user.uid, "instituciones"), {
+    nombre: nombre,
+    porcentaje: porcentaje
+  });
+
+  cargarInstituciones();
+}
+
+
+
+window.agregarTurno = async function () {
+  const paciente = document.getElementById("pacienteTurno").value;
+  const fecha = document.getElementById("fechaTurno").value;
+  const institucionData = document.getElementById("institucionTurno").value;
+  const pagoInicial = document.getElementById("pagoTurno").checked;
+  const user = auth.currentUser;
+
+  if (!user) {
+    document.getElementById("mensajeTurno").innerText = "Usuario no autenticado";
+    return;
+  }
+
+  let institucion = "Particular";
+  let porcentaje = 0;
+
+  if (institucionData) {
+    const partes = institucionData.split("|");
+    institucion = partes[0];
+    porcentaje = parseInt(partes[1]);
+  }
+
+  const monto = 20000;
+
+  try {
+    await addDoc(collection(db, "usuarios", user.uid, "turnos"), {
+      paciente: paciente,
+      fecha: fecha,
+      pago: pagoInicial,
+      monto: monto,
+      institucion: institucion,
+      porcentaje: porcentaje
+    });
+
+    document.getElementById("mensajeTurno").innerText = "Turno guardado correctamente";
+    cargarTurnos();
+  } catch (e) {
+    document.getElementById("mensajeTurno").innerText = e.message;
+  }
+}
+
+window.cargarTurnos = async function () {
+  const user = auth.currentUser;
+  const lista = document.getElementById("listaTurnos");
+  lista.innerHTML = "";
+  const mesSeleccionado = document.getElementById("mesFiltro").value;
+
+  const querySnapshot = await getDocs(collection(db, "usuarios", user.uid, "turnos"));
+  let total = 0;
+  let totalInstitucion = 0;
+  let totalNeto = 0;
+  let totalPendiente = 0;
+  let instituciones = {};
+  querySnapshot.forEach((docu) => {
+  const turno = docu.data();
+  const fechaTurno = new Date(turno.fecha);
+const mesTurno = fechaTurno.toISOString().slice(0,7);
+
+if (mesSeleccionado && mesTurno !== mesSeleccionado) {
+  return;
+}
+  if (turno.pago === true) {
+  total += turno.monto || 0;
+
+  const comision = (turno.monto || 0) * (turno.porcentaje || 0) / 100;
+  totalInstitucion += comision;
+  totalNeto += (turno.monto || 0) - comision;
+
+  const nombreInst = turno.institucion || "Particular";
+
+  if (!instituciones[nombreInst]) {
+    instituciones[nombreInst] = 0;
+  }
+
+  instituciones[nombreInst] += comision;
+}
+  if (turno.pago === false) {
+  totalPendiente += turno.monto || 0;
+}
+  const item = document.createElement("li");
+
+  const texto = document.createElement("span");
+  texto.innerText = turno.paciente + " - " + turno.fecha + " - " + turno.institucion + " - Pagó: " + turno.pago;
+
+  const boton = document.createElement("button");
+  boton.innerText = turno.pago ? "Marcar No Pagado" : "Marcar Pagado";
+
+  boton.onclick = async () => {
+  const turnoRef = doc(db, "usuarios", user.uid, "turnos", docu.id);
+  const nuevoPago = !turno.pago;
+
+  await updateDoc(turnoRef, {
+    pago: nuevoPago
+  });
+
+  turno.pago = nuevoPago;
+  cargarTurnos();
+};
+
+  item.appendChild(texto);
+  item.appendChild(boton);
+
+  const eliminar = document.createElement("button");
+eliminar.innerText = "Eliminar";
+
+eliminar.onclick = async () => {
+  const turnoRef = doc(db, "usuarios", user.uid, "turnos", docu.id);
+  await deleteDoc(turnoRef);
+  cargarTurnos();
+};
+
+item.appendChild(eliminar);
+  lista.appendChild(item);
+});
+
+document.getElementById("totalMes").innerText = "Total cobrado: $" + total;
+document.getElementById("totalInstitucion").innerText = "A pagar institución: $" + totalInstitucion;
+document.getElementById("totalNeto").innerText = "Neto para vos: $" + totalNeto;
+document.getElementById("totalPendiente").innerText = "Pendiente de cobro: $" + totalPendiente;
+const listaInst = document.getElementById("detalleInstituciones");
+listaInst.innerHTML = "";
+
+for (let inst in instituciones) {
+  const li = document.createElement("li");
+  li.innerText = inst + ": $" + instituciones[inst];
+  listaInst.appendChild(li);
+}
+}
+    window.register = function () {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+
+      createUserWithEmailAndPassword(auth, email, password)
+        .then(() => {
+          document.getElementById("mensaje").innerText = "Usuario creado correctamente";
+        })
+        .catch(error => {
+          document.getElementById("mensaje").innerText = error.message;
+        });
+    }
+
+    window.login = function () {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+
+      signInWithEmailAndPassword(auth, email, password)
+        .then(() => {
+  document.getElementById("login").style.display = "none";
+  document.getElementById("panel").style.display = "block";
+  cargarTurnos();
+  cargarInstituciones();
+})
+        .catch(error => {
+          document.getElementById("mensaje").innerText = error.message;
+        });
+    }
+   window.logout = function () {
+  auth.signOut();
+  document.getElementById("panel").style.display = "none";
+  document.getElementById("login").style.display = "block";
+};
+  </script>
+
+  <style>
+    body {
+      font-family: Arial;
+      background: #f4f6f9;
+      padding: 40px;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      max-width: 400px;
+      margin: auto;
+      box-shadow: 0 0 15px rgba(0,0,0,0.1);
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background: #2d89ef;
+      color: white;
+      border: none;
+      cursor: pointer;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+
+<div id="login" class="container">
+  <h2>Therapify</h2>
+  <input type="email" id="email" placeholder="Email">
+  <input type="password" id="password" placeholder="Contraseña">
+  <button onclick="register()">Registrarse</button>
+  <button onclick="login()">Iniciar sesión</button>
+  <p id="mensaje"></p>
+
+</div>
+
+<div id="panel" style="display:none;" class="container">
+  <h2>Panel Therapify</h2>
+  <p>Bienvenida 👋</p>
+
+<input type="month" id="mesFiltro">
+<h3>Agregar Institución</h3>
+<input type="text" id="nombreInstitucion" placeholder="Nombre institución">
+<input type="number" id="porcentajeInstitucion" placeholder="% comisión">
+<button onclick="agregarInstitucion()">Guardar Institución</button>
+<button onclick="cargarTurnos()">Filtrar</button>
+<h3>Agregar turno</h3>
+<input type="text" id="pacienteTurno" placeholder="Nombre del paciente">
+<input type="datetime-local" id="fechaTurno">
+
+<select id="institucionTurno"></select>
+
+<label>
+  <input type="checkbox" id="pagoTurno"> Pagó
+</label>
+
+<button onclick="agregarTurno()">Guardar Turno</button>
+
+  <p id="mensajeTurno"></p>
+
+  <h3>Turnos cargados</h3>
+  <ul id="listaTurnos"></ul>
+  <p id="totalMes"></p>
+  <p id="totalInstitucion"></p>
+  <ul id="detalleInstituciones"></ul>
+  <p id="totalNeto"></p>
+  <p id="totalPendiente"></p>
+  <br><br>
+  <button onclick="logout()">Cerrar sesión</button>
+</div>
+
+</body>
+</html>

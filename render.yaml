@@ -1,0 +1,15 @@
+# Render – Despliegue de Therapify
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: therapify
+    env: node
+    buildCommand: cd backend && npm install
+    startCommand: node backend/src/server.js
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: COOKIE_SECRET
+        generateValue: true
+      - key: NODE_ENV
+        value: production

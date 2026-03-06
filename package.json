@@ -1,0 +1,14 @@
+{
+  "name": "therapify",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Therapify - Agenda y finanzas para psicólogos",
+  "scripts": {
+    "start": "node backend/src/server.js",
+    "build": "cd backend && npm install",
+    "postinstall": "cd backend && npm install"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
